@@ -32,6 +32,7 @@ const MainAppContent: React.FC = () => {
     error: firebaseError,
     permissionError,
     indexError,
+    firebaseAvailable,
     addContact: addFirebaseContact,
     updateContact: updateFirebaseContact,
     deleteContact: deleteFirebaseContact,
@@ -91,14 +92,20 @@ const MainAppContent: React.FC = () => {
   // Check if we should show migration modal on first load
   React.useEffect(() => {
     const hasShownMigration = localStorage.getItem('firebase-migration-shown');
-    if (!hasShownMigration && !firebaseLoading && firebaseContacts.length === 0) {
+    
+    // Only show migration modal if Firebase is available and working
+    if (!hasShownMigration && !firebaseLoading && firebaseAvailable && firebaseContacts.length === 0) {
       setShowMigrationModal(true);
       localStorage.setItem('firebase-migration-shown', 'true');
-    } else if (firebaseContacts.length > 0) {
+    } else if (firebaseAvailable && firebaseContacts.length > 0) {
       setUseFirebase(true);
       setMigrationCompleted(true);
+    } else if (!firebaseAvailable) {
+      // Firebase is not available, use local data
+      setUseFirebase(false);
+      setMigrationCompleted(false);
     }
-  }, [firebaseLoading, firebaseContacts.length]);
+  }, [firebaseLoading, firebaseContacts.length, firebaseAvailable]);
 
   // Calcul des analytics
   const analytics: Analytics = {
@@ -319,7 +326,7 @@ const MainAppContent: React.FC = () => {
   };
 
   // Show loading screen during Firebase initialization
-  if (firebaseLoading && !migrationCompleted) {
+  if (firebaseLoading && firebaseAvailable) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
         <div className="text-center">
@@ -330,7 +337,8 @@ const MainAppContent: React.FC = () => {
     );
   }
 
-  if (firebaseError) {
+  // Only show Firebase errors if we're trying to use Firebase
+  if (firebaseError && firebaseAvailable) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-6">
@@ -358,12 +366,23 @@ const MainAppContent: React.FC = () => {
             </div>
           )}
           
-          <button
-            onClick={() => window.location.reload()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            Retry
-          </button>
+          <div className="flex space-x-3 justify-center">
+            <button
+              onClick={() => {
+                setUseFirebase(false);
+                setMigrationCompleted(false);
+              }}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Utiliser en mode local
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Réessayer
+            </button>
+          </div>
         </div>
       </div>
     );

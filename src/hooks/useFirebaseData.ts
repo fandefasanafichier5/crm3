@@ -23,11 +23,15 @@ export const useFirebaseData = () => {
   const [error, setError] = useState<string | null>(null);
   const [permissionError, setPermissionError] = useState<boolean>(false);
   const [indexError, setIndexError] = useState<boolean>(false);
+  const [firebaseAvailable, setFirebaseAvailable] = useState<boolean>(true);
   
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
 
   const initializeData = useCallback(async () => {
-    if (!user) return;
+    if (!currentUser || !firebaseAvailable) {
+      setLoading(false);
+      return;
+    }
     
     try {
       setLoading(true);
@@ -37,12 +41,12 @@ export const useFirebaseData = () => {
 
       // Load initial data
       const [contactsData, productsData, ordersData, notesData, remindersData, vendorData] = await Promise.all([
-        contactsService.getAll(user.uid),
-        productsService.getAll(user.uid),
-        ordersService.getAll(user.uid),
-        notesService.getAll(user.uid),
-        remindersService.getAll(user.uid),
-        vendorInfoService.get(user.uid)
+        contactsService.getAll(currentUser.uid),
+        productsService.getAll(currentUser.uid),
+        ordersService.getAll(currentUser.uid),
+        notesService.getAll(currentUser.uid),
+        remindersService.getAll(currentUser.uid),
+        vendorInfoService.get(currentUser.uid)
       ]);
 
       setContacts(contactsData);
@@ -58,23 +62,30 @@ export const useFirebaseData = () => {
       if (err instanceof FirebaseError) {
         if (err.code === 'permission-denied') {
           setPermissionError(true);
+          setFirebaseAvailable(false);
           setError('Permission denied. Please check Firebase Security Rules.');
         } else if (err.code === 'failed-precondition') {
           setIndexError(true);
+          setFirebaseAvailable(false);
           setError('Database indexes are missing. Please create required indexes in Firebase Console.');
         } else {
+          setFirebaseAvailable(false);
           setError(`Firebase error: ${err.message}`);
         }
       } else {
+        setFirebaseAvailable(false);
         setError(err instanceof Error ? err.message : 'Failed to load data');
       }
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [currentUser, firebaseAvailable]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!currentUser || !firebaseAvailable) {
+      setLoading(false);
+      return;
+    }
 
     const handleSnapshotError = (error: Error) => {
       console.error('Snapshot listener error:', error);
@@ -82,38 +93,40 @@ export const useFirebaseData = () => {
       if (error instanceof FirebaseError) {
         if (error.code === 'permission-denied') {
           setPermissionError(true);
+          setFirebaseAvailable(false);
           setError('Permission denied. Please check Firebase Security Rules.');
         } else if (error.code === 'failed-precondition') {
           setIndexError(true);
+          setFirebaseAvailable(false);
           setError('Database indexes are missing. Please create required indexes in Firebase Console.');
         }
       }
     };
 
-    // Set up real-time listeners
+    // Set up real-time listeners only if Firebase is available
     const unsubscribeContacts = contactsService.onSnapshot(
       setContacts, 
-      user.uid,
+      currentUser.uid,
       handleSnapshotError
     );
     const unsubscribeProducts = productsService.onSnapshot(
       setProducts, 
-      user.uid,
+      currentUser.uid,
       handleSnapshotError
     );
     const unsubscribeOrders = ordersService.onSnapshot(
       setOrders, 
-      user.uid,
+      currentUser.uid,
       handleSnapshotError
     );
     const unsubscribeNotes = notesService.onSnapshot(
       setNotes, 
-      user.uid,
+      currentUser.uid,
       handleSnapshotError
     );
     const unsubscribeReminders = remindersService.onSnapshot(
       setReminders, 
-      user.uid,
+      currentUser.uid,
       handleSnapshotError
     );
 
@@ -124,7 +137,12 @@ export const useFirebaseData = () => {
       unsubscribeNotes();
       unsubscribeReminders();
     };
-  }, [user]);
+  }, [currentUser, firebaseAvailable]);
+
+  // Initialize data on mount
+  useEffect(() => {
+    initializeData();
+  }, [initializeData]);
 
   // CRUD operations
   const addContact = async (contact: Omit<Contact, 'id'>) => {
@@ -244,6 +262,7 @@ export const useFirebaseData = () => {
     error,
     permissionError,
     indexError,
+    firebaseAvailable,
     
     // CRUD operations
     addContact,
