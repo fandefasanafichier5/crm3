@@ -10,9 +10,10 @@ interface LayoutProps {
   onTabChange: (tab: 'dashboard' | 'contacts' | 'orders' | 'products' | 'timeline') => void;
   onNewNote: () => void;
   onVendorSettings: () => void;
+  onMigrateToFirebase: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onNewNote, onVendorSettings }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onNewNote, onVendorSettings, onMigrateToFirebase }) => {
   const tabs = [
     { id: 'dashboard' as const, label: 'Tableau de bord', icon: BarChart3 },
     { id: 'contacts' as const, label: 'Clients', icon: Users },
@@ -39,14 +40,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onNew
               <ThemeToggle />
               <UserMenu />
               <button
-                onClick={() => {
-                  const shouldMigrate = confirm('Voulez-vous migrer vos données vers Firebase ? Cette opération est irréversible.');
-                  if (shouldMigrate) {
-                    // Reset migration flag to show modal again
-                    localStorage.removeItem('firebase-migration-shown');
-                    window.location.reload();
-                  }
-                }}
+                onClick={onMigrateToFirebase}
                 className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-all duration-200 hover:scale-105 text-sm"
               >
                 <Package className="w-4 h-4" />
