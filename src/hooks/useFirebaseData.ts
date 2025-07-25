@@ -1,280 +1,535 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import {
-  contactsService,
-  productsService,
-  ordersService,
-  notesService,
-  remindersService,
-  vendorInfoService
-} from '../services/firebaseService';
-import { FirebaseError } from 'firebase/app';
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  writeBatch,
+  serverTimestamp,
+  Timestamp,
+  QueryConstraint
+} from 'firebase/firestore';
+import { User } from 'firebase/auth';
+import { db } from '../config/firebase';
 import { Contact, Product, Order, Note, Reminder } from '../utils/types';
-import { VendorInfo } from '../components/VendorSettings';
 
-export const useFirebaseData = () => {
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [vendorInfo, setVendorInfo] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [permissionError, setPermissionError] = useState<boolean>(false);
-  const [indexError, setIndexError] = useState<boolean>(false);
-  const [firebaseAvailable, setFirebaseAvailable] = useState<boolean>(true);
+// Collections
+const COLLECTIONS = {
+  CONTACTS: 'contacts',
+  PRODUCTS: 'products',
+  ORDERS: 'orders',
+  NOTES: 'notes',
+  REMINDERS: 'reminders',
+  VENDOR_INFO: 'vendorInfo'
+};
+
+// Helper function to convert Firestore timestamps to Date objects
+const convertTimestamps = (data: any): any => {
+  if (!data) return data;
   
-  const { currentUser } = useAuth();
+  const converted = { ...data };
+  Object.keys(converted).forEach(key => {
+    if (converted[key] instanceof Timestamp) {
+      converted[key] = converted[key].toDate();
+    } else if (converted[key] && typeof converted[key] === 'object') {
+      converted[key] = convertTimestamps(converted[key]);
+    }
+  });
+  
+  return converted;
+};
 
-  const initializeData = useCallback(async () => {
-    if (!currentUser || !firebaseAvailable) {
-      setLoading(false);
-      return;
+// Helper function to convert Date objects to Firestore timestamps
+const convertDatesToTimestamps = (data: any): any => {
+  if (!data) return data;
+  
+  const converted = { ...data };
+  Object.keys(converted).forEach(key => {
+    if (converted[key] instanceof Date) {
+      converted[key] = Timestamp.fromDate(converted[key]);
+    } else if (converted[key] && typeof converted[key] === 'object' && !Array.isArray(converted[key])) {
+      converted[key] = convertDatesToTimestamps(converted[key]);
+    }
+  });
+  
+  return converted;
+};
+
+// Contacts Service
+export const contactsService = {
+  // Get all contacts
+  async getAll(userId?: string): Promise<Contact[]> {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
     }
     
-    try {
-      setLoading(true);
-      setError(null);
-      setPermissionError(false);
-      setIndexError(false);
+    const querySnapshot = await getDocs(query(collection(db, COLLECTIONS.CONTACTS), ...constraints));
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...convertTimestamps(doc.data())
+    })) as Contact[];
+  },
 
-      // Load initial data
-      const [contactsData, productsData, ordersData, notesData, remindersData, vendorData] = await Promise.all([
-        contactsService.getAll(currentUser.uid),
-        productsService.getAll(currentUser.uid),
-        ordersService.getAll(currentUser.uid),
-        notesService.getAll(currentUser.uid),
-        remindersService.getAll(currentUser.uid),
-        vendorInfoService.get(currentUser.uid)
-      ]);
-
-      setContacts(contactsData);
-      setProducts(productsData);
-      setOrders(ordersData);
-      setNotes(notesData);
-      setReminders(remindersData);
-      setVendorInfo(vendorData);
-      
-    } catch (err) {
-      console.error('Error initializing Firebase data:', err);
-      
-      if (err instanceof FirebaseError) {
-        if (err.code === 'permission-denied') {
-          setPermissionError(true);
-          setFirebaseAvailable(false);
-          setError('Permission denied. Please check Firebase Security Rules.');
-        } else if (err.code === 'failed-precondition') {
-          setIndexError(true);
-          setFirebaseAvailable(false);
-          setError('Database indexes are missing. Please create required indexes in Firebase Console.');
-        } else {
-          setFirebaseAvailable(false);
-          setError(`Firebase error: ${err.message}`);
-        }
-      } else {
-        setFirebaseAvailable(false);
-        setError(err instanceof Error ? err.message : 'Failed to load data');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, firebaseAvailable]);
-
-  useEffect(() => {
-    if (!currentUser || !firebaseAvailable) {
-      setLoading(false);
-      return;
-    }
-
-    const handleSnapshotError = (error: Error) => {
-      console.error('Snapshot listener error:', error);
-      
-      if (error instanceof FirebaseError) {
-        if (error.code === 'permission-denied') {
-          setPermissionError(true);
-          setFirebaseAvailable(false);
-          setError('Permission denied. Please check Firebase Security Rules.');
-        } else if (error.code === 'failed-precondition') {
-          setIndexError(true);
-          setFirebaseAvailable(false);
-          setError('Database indexes are missing. Please create required indexes in Firebase Console.');
-        }
-      }
-    };
-
-    // Set up real-time listeners only if Firebase is available
-    const unsubscribeContacts = contactsService.onSnapshot(
-      setContacts, 
-      currentUser.uid,
-      handleSnapshotError
-    );
-    const unsubscribeProducts = productsService.onSnapshot(
-      setProducts, 
-      currentUser.uid,
-      handleSnapshotError
-    );
-    const unsubscribeOrders = ordersService.onSnapshot(
-      setOrders, 
-      currentUser.uid,
-      handleSnapshotError
-    );
-    const unsubscribeNotes = notesService.onSnapshot(
-      setNotes, 
-      currentUser.uid,
-      handleSnapshotError
-    );
-    const unsubscribeReminders = remindersService.onSnapshot(
-      setReminders, 
-      currentUser.uid,
-      handleSnapshotError
-    );
-
-    return () => {
-      unsubscribeContacts();
-      unsubscribeProducts();
-      unsubscribeOrders();
-      unsubscribeNotes();
-      unsubscribeReminders();
-    };
-  }, [currentUser, firebaseAvailable]);
-
-  // Initialize data on mount
-  useEffect(() => {
-    initializeData();
-  }, [initializeData]);
-
-  // CRUD operations
-  const addContact = async (contact: Omit<Contact, 'id'>) => {
-    if (!currentUser) throw new Error('User not authenticated');
-    try {
-      await contactsService.add(contact, currentUser.uid);
-    } catch (err) {
-      console.error('Error adding contact:', err);
-      throw err;
-    }
-  };
-
-  const updateContact = async (id: string, contact: Partial<Contact>) => {
-    try {
-      await contactsService.update(id, contact);
-    } catch (err) {
-      console.error('Error updating contact:', err);
-      throw err;
-    }
-  };
-
-  const deleteContact = async (id: string) => {
-    try {
-      await contactsService.delete(id);
-    } catch (err) {
-      console.error('Error deleting contact:', err);
-      throw err;
-    }
-  };
-
-  const addProduct = async (product: Omit<Product, 'id'>) => {
-    if (!currentUser) throw new Error('User not authenticated');
-    try {
-      await productsService.add(product, currentUser.uid);
-    } catch (err) {
-      console.error('Error adding product:', err);
-      throw err;
-    }
-  };
-
-  const updateProduct = async (id: string, product: Partial<Product>) => {
-    try {
-      await productsService.update(id, product);
-    } catch (err) {
-      console.error('Error updating product:', err);
-      throw err;
-    }
-  };
-
-  const deleteProduct = async (id: string) => {
-    try {
-      await productsService.delete(id);
-    } catch (err) {
-      console.error('Error deleting product:', err);
-      throw err;
-    }
-  };
-
-  const addOrder = async (order: Omit<Order, 'id'>) => {
-    if (!currentUser) throw new Error('User not authenticated');
-    try {
-      await ordersService.add(order, currentUser.uid);
-    } catch (err) {
-      console.error('Error adding order:', err);
-      throw err;
-    }
-  };
-
-  const updateOrder = async (id: string, order: Partial<Order>) => {
-    try {
-      await ordersService.update(id, order);
-    } catch (err) {
-      console.error('Error updating order:', err);
-      throw err;
-    }
-  };
-
-  const addNote = async (note: Omit<Note, 'id'>) => {
-    if (!currentUser) throw new Error('User not authenticated');
-    try {
-      await notesService.add(note, currentUser.uid);
-    } catch (err) {
-      console.error('Error adding note:', err);
-      throw err;
-    }
-  };
-
-  const updateReminder = async (id: string, reminder: Partial<Reminder>) => {
-    try {
-      await remindersService.update(id, reminder);
-    } catch (err) {
-      console.error('Error updating reminder:', err);
-      throw err;
-    }
-  };
-
-  const saveVendorInfo = async (info: VendorInfo) => {
-    if (!currentUser) throw new Error('User not authenticated');
-    try {
-      await vendorInfoService.set(info, currentUser.uid);
-      setVendorInfo(info);
-    } catch (err) {
-      console.error('Error saving vendor info:', err);
-      throw err;
-    }
-  };
-
-  return {
-    // Data
-    contacts,
-    products,
-    orders,
-    notes,
-    reminders,
-    vendorInfo,
-    loading,
-    error,
-    permissionError,
-    indexError,
-    firebaseAvailable,
+  // Get contact by ID
+  async getById(id: string): Promise<Contact | null> {
+    const docRef = doc(db, COLLECTIONS.CONTACTS, id);
+    const docSnap = await getDoc(docRef);
     
-    // CRUD operations
-    addContact,
-    updateContact,
-    deleteContact,
-    addProduct,
-    updateProduct,
-    deleteProduct,
-    addOrder,
-    updateOrder,
-    addNote,
-    updateReminder,
-    saveVendorInfo
-  };
+    if (docSnap.exists()) {
+      return {
+        id: docSnap.id,
+        ...convertTimestamps(docSnap.data())
+      } as Contact;
+    }
+    return null;
+  },
+
+  // Add new contact
+  async add(contact: Omit<Contact, 'id'>, userId: string): Promise<string> {
+    const contactData = convertDatesToTimestamps(contact);
+    const docRef = await addDoc(collection(db, COLLECTIONS.CONTACTS), {
+      ...contactData,
+      userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return docRef.id;
+  },
+
+  // Update contact
+  async update(id: string, contact: Partial<Contact>): Promise<void> {
+    const docRef = doc(db, COLLECTIONS.CONTACTS, id);
+    const contactData = convertDatesToTimestamps(contact);
+    await updateDoc(docRef, {
+      ...contactData,
+      updatedAt: serverTimestamp()
+    });
+  },
+
+  // Delete contact
+  async delete(id: string): Promise<void> {
+    await deleteDoc(doc(db, COLLECTIONS.CONTACTS, id));
+  },
+
+  // Listen to contacts changes
+  onSnapshot(callback: (contacts: Contact[]) => void, userId?: string, onError?: (error: Error) => void) {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
+    }
+    
+    return onSnapshot(query(collection(db, COLLECTIONS.CONTACTS), ...constraints), (snapshot) => {
+      const contacts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...convertTimestamps(doc.data())
+      })) as Contact[];
+      callback(contacts);
+    }, onError);
+  }
+};
+
+// Products Service
+export const productsService = {
+  async getAll(userId?: string): Promise<Product[]> {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
+    }
+    
+    const querySnapshot = await getDocs(query(collection(db, COLLECTIONS.PRODUCTS), ...constraints));
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...convertTimestamps(doc.data())
+    })) as Product[];
+  },
+
+  async add(product: Omit<Product, 'id'>, userId: string): Promise<string> {
+    const docRef = await addDoc(collection(db, COLLECTIONS.PRODUCTS), {
+      ...product,
+      userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return docRef.id;
+  },
+
+  async update(id: string, product: Partial<Product>): Promise<void> {
+    const docRef = doc(db, COLLECTIONS.PRODUCTS, id);
+    await updateDoc(docRef, {
+      ...product,
+      updatedAt: serverTimestamp()
+    });
+  },
+
+  async delete(id: string): Promise<void> {
+    await deleteDoc(doc(db, COLLECTIONS.PRODUCTS, id));
+  },
+
+  onSnapshot(callback: (products: Product[]) => void, userId?: string, onError?: (error: Error) => void) {
+    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
+    if (userId) {
+      constraints.unshift(where('userId', '==', userId));
+    }
+    
+    return onSnapshot(query(collection(db, COLLECTIONS.PRODUCTS), ...constraints), (snapshot) => {
+      const products = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...convertTimestamps(doc.data())
+      })) as Product[];
+      callback(products);
+    }, onError);
+  }
+};
+
+// Orders Service
+export const ordersService = {
+  async getAll(userId?: string): Promise<Order[]> {
+    const constraints: QueryConstraint[] = [orderBy('orderDate', 'desc')];
+    if (userId) {
+      constraints.unshift(where('userId', '==', userId));
+    }
+    
+    const querySnapshot = await getDocs(
+      query(collection(db, COLLECTIONS.ORDERS), ...constraints)
+    );
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...convertTimestamps(doc.data())
+    })) as Order[];
+  },
+
+  async add(order: Omit<Order, 'id'>, userId: string): Promise<string> {
+    const orderData = convertDatesToTimestamps(order);
+    const docRef = await addDoc(collection(db, COLLECTIONS.ORDERS), {
+      ...orderData,
+      userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return docRef.id;
+  },
+
+  async update(id: string, order: Partial<Order>): Promise<void> {
+    const docRef = doc(db, COLLECTIONS.ORDERS, id);
+    const orderData = convertDatesToTimestamps(order);
+    await updateDoc(docRef, {
+      ...orderData,
+      updatedAt: serverTimestamp()
+    });
+  },
+
+  async delete(id: string): Promise<void> {
+    await deleteDoc(doc(db, COLLECTIONS.ORDERS, id));
+  },
+
+  onSnapshot(callback: (orders: Order[]) => void, userId?: string, onError?: (error: Error) => void) {
+    const constraints: QueryConstraint[] = [orderBy('orderDate', 'desc')];
+    if (userId) {
+      constraints.unshift(where('userId', '==', userId));
+    }
+    
+    return onSnapshot(
+      query(collection(db, COLLECTIONS.ORDERS), ...constraints),
+      (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...convertTimestamps(doc.data())
+        })) as Order[];
+        callback(orders);
+      },
+      onError
+    );
+  }
+};
+
+// Notes Service
+export const notesService = {
+  async getAll(userId?: string): Promise<Note[]> {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
+    }
+    
+    const querySnapshot = await getDocs(
+      query(collection(db, COLLECTIONS.NOTES), ...constraints)
+    );
+    
+    const notes = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...convertTimestamps(doc.data())
+    })) as Note[];
+    
+    // Tri côté client pour éviter l'erreur d'index Firebase
+    return notes.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateB.getTime() - dateA.getTime(); // Tri décroissant
+    });
+  },
+
+  async add(note: Omit<Note, 'id'>, userId: string): Promise<string> {
+    const noteData = convertDatesToTimestamps(note);
+    const docRef = await addDoc(collection(db, COLLECTIONS.NOTES), {
+      ...noteData,
+      userId,
+      createdAt: serverTimestamp()
+    });
+    return docRef.id;
+  },
+
+  async update(id: string, note: Partial<Note>): Promise<void> {
+    const docRef = doc(db, COLLECTIONS.NOTES, id);
+    const noteData = convertDatesToTimestamps(note);
+    await updateDoc(docRef, noteData);
+  },
+
+  async delete(id: string): Promise<void> {
+    await deleteDoc(doc(db, COLLECTIONS.NOTES, id));
+  },
+
+  onSnapshot(callback: (notes: Note[]) => void, userId?: string, onError?: (error: Error) => void) {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
+    }
+    
+    return onSnapshot(
+      query(collection(db, COLLECTIONS.NOTES), ...constraints),
+      (snapshot) => {
+        const notes = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...convertTimestamps(doc.data())
+        })) as Note[];
+        
+        // Tri côté client pour éviter l'erreur d'index Firebase
+        const sortedNotes = notes.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          return dateB.getTime() - dateA.getTime(); // Tri décroissant
+        });
+        
+        callback(sortedNotes);
+      },
+      onError
+    );
+  }
+};
+
+// Reminders Service - CORRIGÉ POUR ÉVITER L'ERREUR D'INDEX
+export const remindersService = {
+  async getAll(userId?: string): Promise<Reminder[]> {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
+    }
+    
+    const querySnapshot = await getDocs(
+      query(collection(db, COLLECTIONS.REMINDERS), ...constraints)
+    );
+    
+    const reminders = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...convertTimestamps(doc.data())
+    })) as Reminder[];
+    
+    // Tri côté client pour éviter l'erreur d'index Firebase
+    return reminders.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateA.getTime() - dateB.getTime(); // Tri croissant
+    });
+  },
+
+  async add(reminder: Omit<Reminder, 'id'>, userId: string): Promise<string> {
+    const reminderData = convertDatesToTimestamps(reminder);
+    const docRef = await addDoc(collection(db, COLLECTIONS.REMINDERS), {
+      ...reminderData,
+      userId,
+      createdAt: serverTimestamp()
+    });
+    return docRef.id;
+  },
+
+  async update(id: string, reminder: Partial<Reminder>): Promise<void> {
+    const docRef = doc(db, COLLECTIONS.REMINDERS, id);
+    const reminderData = convertDatesToTimestamps(reminder);
+    await updateDoc(docRef, reminderData);
+  },
+
+  async delete(id: string): Promise<void> {
+    await deleteDoc(doc(db, COLLECTIONS.REMINDERS, id));
+  },
+
+  onSnapshot(callback: (reminders: Reminder[]) => void, userId?: string, onError?: (error: Error) => void) {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
+    }
+    
+    return onSnapshot(
+      query(collection(db, COLLECTIONS.REMINDERS), ...constraints),
+      (snapshot) => {
+        const reminders = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...convertTimestamps(doc.data())
+        })) as Reminder[];
+        
+        // Tri côté client pour éviter l'erreur d'index Firebase
+        const sortedReminders = reminders.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          return dateA.getTime() - dateB.getTime(); // Tri croissant
+        });
+        
+        callback(sortedReminders);
+      },
+      onError
+    );
+  }
+};
+
+// Vendor Info Service
+export const vendorInfoService = {
+  async get(userId?: string): Promise<any> {
+    const constraints: QueryConstraint[] = [];
+    if (userId) {
+      constraints.push(where('userId', '==', userId));
+    }
+    
+    const querySnapshot = await getDocs(query(collection(db, COLLECTIONS.VENDOR_INFO), ...constraints));
+    if (!querySnapshot.empty) {
+      const doc = querySnapshot.docs[0];
+      return {
+        id: doc.id,
+        ...doc.data()
+      };
+    }
+    return null;
+  },
+
+  async set(vendorInfo: any, userId: string): Promise<void> {
+    const querySnapshot = await getDocs(
+      query(collection(db, COLLECTIONS.VENDOR_INFO), where('userId', '==', userId))
+    );
+    
+    if (!querySnapshot.empty) {
+      // Update existing
+      const docRef = doc(db, COLLECTIONS.VENDOR_INFO, querySnapshot.docs[0].id);
+      await updateDoc(docRef, {
+        ...vendorInfo,
+        userId,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // Create new
+      await addDoc(collection(db, COLLECTIONS.VENDOR_INFO), {
+        ...vendorInfo,
+        userId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+};
+
+// Migration Service - to migrate existing data to Firebase
+export const migrationService = {
+  async migrateAllData(localData: {
+    contacts: Contact[];
+    products: Product[];
+    orders: Order[];
+    notes: Note[];
+    reminders: Reminder[];
+    vendorInfo: any;
+  }, userId: string): Promise<void> {
+    const batch = writeBatch(db);
+    
+    try {
+      // Migrate contacts
+      for (const contact of localData.contacts) {
+        const { id, ...contactData } = contact;
+        const docRef = doc(collection(db, COLLECTIONS.CONTACTS));
+        const dataWithTimestamps = convertDatesToTimestamps(contactData);
+        batch.set(docRef, {
+          ...dataWithTimestamps,
+          userId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      // Migrate products
+      for (const product of localData.products) {
+        const { id, ...productData } = product;
+        const docRef = doc(collection(db, COLLECTIONS.PRODUCTS));
+        batch.set(docRef, {
+          ...productData,
+          userId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      // Migrate orders
+      for (const order of localData.orders) {
+        const { id, ...orderData } = order;
+        const docRef = doc(collection(db, COLLECTIONS.ORDERS));
+        const dataWithTimestamps = convertDatesToTimestamps(orderData);
+        batch.set(docRef, {
+          ...dataWithTimestamps,
+          userId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      // Migrate notes
+      for (const note of localData.notes) {
+        const { id, ...noteData } = note;
+        const docRef = doc(collection(db, COLLECTIONS.NOTES));
+        const dataWithTimestamps = convertDatesToTimestamps(noteData);
+        batch.set(docRef, {
+          ...dataWithTimestamps,
+          userId,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      // Migrate reminders
+      for (const reminder of localData.reminders) {
+        const { id, ...reminderData } = reminder;
+        const docRef = doc(collection(db, COLLECTIONS.REMINDERS));
+        const dataWithTimestamps = convertDatesToTimestamps(reminderData);
+        batch.set(docRef, {
+          ...dataWithTimestamps,
+          userId,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      // Migrate vendor info
+      if (localData.vendorInfo) {
+        const docRef = doc(collection(db, COLLECTIONS.VENDOR_INFO));
+        batch.set(docRef, {
+          ...localData.vendorInfo,
+          userId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      await batch.commit();
+      console.log('Migration completed successfully!');
+    } catch (error) {
+      console.error('Migration failed:', error);
+      throw error;
+    }
+  }
 };
