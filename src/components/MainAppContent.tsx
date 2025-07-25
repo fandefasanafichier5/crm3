@@ -30,6 +30,8 @@ const MainAppContent: React.FC = () => {
     vendorInfo: firebaseVendorInfo,
     loading: firebaseLoading,
     error: firebaseError,
+    permissionError,
+    indexError,
     addContact: addFirebaseContact,
     updateContact: updateFirebaseContact,
     deleteContact: deleteFirebaseContact,
@@ -323,6 +325,45 @@ const MainAppContent: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sage-600 mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400">Chargement de l'application...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (firebaseError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="text-red-500 text-6xl mb-4">
+            {permissionError ? '🔒' : indexError ? '📊' : '⚠️'}
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            {permissionError ? 'Permission Denied' : indexError ? 'Database Setup Required' : 'Error Loading Data'}
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">{firebaseError}</p>
+          
+          {permissionError && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                <strong>To fix this:</strong> Go to your Firebase Console → Firestore Database → Rules and update the security rules to allow authenticated users access to their data.
+              </p>
+            </div>
+          )}
+          
+          {indexError && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                <strong>To fix this:</strong> Check the browser console for specific index creation URLs and click them to create the required composite indexes in Firebase Console.
+              </p>
+            </div>
+          )}
+          
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
