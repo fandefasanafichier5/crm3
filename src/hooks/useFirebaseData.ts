@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   contactsService,
@@ -8,6 +8,7 @@ import {
   remindersService,
   vendorInfoService
 } from '../services/firebaseService';
+import { FirebaseError } from 'firebase/app';
 import { Contact, Product, Order, Note, Reminder } from '../utils/types';
 import { VendorInfo } from '../components/VendorSettings';
 
@@ -17,61 +18,113 @@ export const useFirebaseData = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [vendorInfo, setVendorInfo] = useState<VendorInfo>({
-    name: 'Kéfir Madagascar SARL',
-    address: 'Lot II M 15 Bis Antanimena, 101 Antananarivo, Madagascar',
-    phone: '+261 32 12 345 67',
-    email: 'contact@kefir-madagascar.mg',
-    nif: '',
-    stat: ''
-  });
+  const [vendorInfo, setVendorInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<boolean>(false);
+  const [indexError, setIndexError] = useState<boolean>(false);
   
-  const { currentUser } = useAuth();
+  const { user } = useAuth();
+
+  const initializeData = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      setPermissionError(false);
+      setIndexError(false);
+
+      // Load initial data
+      const [contactsData, productsData, ordersData, notesData, remindersData, vendorData] = await Promise.all([
+        contactsService.getAll(user.uid),
+        productsService.getAll(user.uid),
+        ordersService.getAll(user.uid),
+        notesService.getAll(user.uid),
+        remindersService.getAll(user.uid),
+        vendorInfoService.get(user.uid)
+      ]);
+
+      setContacts(contactsData);
+      setProducts(productsData);
+      setOrders(ordersData);
+      setNotes(notesData);
+      setReminders(remindersData);
+      setVendorInfo(vendorData);
+      
+    } catch (err) {
+      console.error('Error initializing Firebase data:', err);
+      
+      if (err instanceof FirebaseError) {
+        if (err.code === 'permission-denied') {
+          setPermissionError(true);
+          setError('Permission denied. Please check Firebase Security Rules.');
+        } else if (err.code === 'failed-precondition') {
+          setIndexError(true);
+          setError('Database indexes are missing. Please create required indexes in Firebase Console.');
+        } else {
+          setError(`Firebase error: ${err.message}`);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
-    if (!currentUser) {
-      setLoading(false);
-      return;
-    }
-    
-    const unsubscribers: (() => void)[] = [];
+    if (!user) return;
 
-    const initializeData = async () => {
-      try {
-        setLoading(true);
-
-        // Set up real-time listeners
-        const unsubContacts = contactsService.onSnapshot(setContacts, currentUser.uid);
-        const unsubProducts = productsService.onSnapshot(setProducts, currentUser.uid);
-        const unsubOrders = ordersService.onSnapshot(setOrders, currentUser.uid);
-        const unsubNotes = notesService.onSnapshot(setNotes, currentUser.uid);
-        const unsubReminders = remindersService.onSnapshot(setReminders, currentUser.uid);
-
-        unsubscribers.push(unsubContacts, unsubProducts, unsubOrders, unsubNotes, unsubReminders);
-
-        // Load vendor info (not real-time)
-        const vendorData = await vendorInfoService.get(currentUser.uid);
-        if (vendorData) {
-          setVendorInfo(vendorData);
+    const handleSnapshotError = (error: Error) => {
+      console.error('Snapshot listener error:', error);
+      
+      if (error instanceof FirebaseError) {
+        if (error.code === 'permission-denied') {
+          setPermissionError(true);
+          setError('Permission denied. Please check Firebase Security Rules.');
+        } else if (error.code === 'failed-precondition') {
+          setIndexError(true);
+          setError('Database indexes are missing. Please create required indexes in Firebase Console.');
         }
-
-        setLoading(false);
-      } catch (err) {
-        console.error('Error initializing Firebase data:', err);
-        setError('Erreur lors du chargement des données');
-        setLoading(false);
       }
     };
 
-    initializeData();
+    // Set up real-time listeners
+    const unsubscribeContacts = contactsService.onSnapshot(
+      setContacts, 
+      user.uid,
+      handleSnapshotError
+    );
+    const unsubscribeProducts = productsService.onSnapshot(
+      setProducts, 
+      user.uid,
+      handleSnapshotError
+    );
+    const unsubscribeOrders = ordersService.onSnapshot(
+      setOrders, 
+      user.uid,
+      handleSnapshotError
+    );
+    const unsubscribeNotes = notesService.onSnapshot(
+      setNotes, 
+      user.uid,
+      handleSnapshotError
+    );
+    const unsubscribeReminders = remindersService.onSnapshot(
+      setReminders, 
+      user.uid,
+      handleSnapshotError
+    );
 
-    // Cleanup function
     return () => {
-      unsubscribers.forEach(unsubscribe => unsubscribe());
+      unsubscribeContacts();
+      unsubscribeProducts();
+      unsubscribeOrders();
+      unsubscribeNotes();
+      unsubscribeReminders();
     };
-  }, [currentUser]);
+  }, [user]);
 
   // CRUD operations
   const addContact = async (contact: Omit<Contact, 'id'>) => {
@@ -189,6 +242,8 @@ export const useFirebaseData = () => {
     vendorInfo,
     loading,
     error,
+    permissionError,
+    indexError,
     
     // CRUD operations
     addContact,

@@ -119,7 +119,7 @@ export const contactsService = {
   },
 
   // Listen to contacts changes
-  onSnapshot(callback: (contacts: Contact[]) => void, userId?: string) {
+  onSnapshot(callback: (contacts: Contact[]) => void, userId?: string, onError?: (error: Error) => void) {
     const constraints: QueryConstraint[] = [];
     if (userId) {
       constraints.push(where('userId', '==', userId));
@@ -131,7 +131,7 @@ export const contactsService = {
         ...convertTimestamps(doc.data())
       })) as Contact[];
       callback(contacts);
-    });
+    }, onError);
   }
 };
 
@@ -172,7 +172,7 @@ export const productsService = {
     await deleteDoc(doc(db, COLLECTIONS.PRODUCTS, id));
   },
 
-  onSnapshot(callback: (products: Product[]) => void, userId?: string) {
+  onSnapshot(callback: (products: Product[]) => void, userId?: string, onError?: (error: Error) => void) {
     const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
     if (userId) {
       constraints.unshift(where('userId', '==', userId));
@@ -184,7 +184,7 @@ export const productsService = {
         ...convertTimestamps(doc.data())
       })) as Product[];
       callback(products);
-    });
+    }, onError);
   }
 };
 
@@ -229,7 +229,7 @@ export const ordersService = {
     await deleteDoc(doc(db, COLLECTIONS.ORDERS, id));
   },
 
-  onSnapshot(callback: (orders: Order[]) => void, userId?: string) {
+  onSnapshot(callback: (orders: Order[]) => void, userId?: string, onError?: (error: Error) => void) {
     const constraints: QueryConstraint[] = [orderBy('orderDate', 'desc')];
     if (userId) {
       constraints.unshift(where('userId', '==', userId));
@@ -243,7 +243,8 @@ export const ordersService = {
           ...convertTimestamps(doc.data())
         })) as Order[];
         callback(orders);
-      }
+      },
+      onError
     );
   }
 };
@@ -285,7 +286,7 @@ export const notesService = {
     await deleteDoc(doc(db, COLLECTIONS.NOTES, id));
   },
 
-  onSnapshot(callback: (notes: Note[]) => void, userId?: string) {
+  onSnapshot(callback: (notes: Note[]) => void, userId?: string, onError?: (error: Error) => void) {
     const constraints: QueryConstraint[] = [orderBy('date', 'desc')];
     if (userId) {
       constraints.unshift(where('userId', '==', userId));
@@ -299,7 +300,8 @@ export const notesService = {
           ...convertTimestamps(doc.data())
         })) as Note[];
         callback(notes);
-      }
+      },
+      onError
     );
   }
 };
@@ -341,7 +343,7 @@ export const remindersService = {
     await deleteDoc(doc(db, COLLECTIONS.REMINDERS, id));
   },
 
-  onSnapshot(callback: (reminders: Reminder[]) => void, userId?: string) {
+  onSnapshot(callback: (reminders: Reminder[]) => void, userId?: string, onError?: (error: Error) => void) {
     const constraints: QueryConstraint[] = [orderBy('date', 'asc')];
     if (userId) {
       constraints.unshift(where('userId', '==', userId));
@@ -355,7 +357,8 @@ export const remindersService = {
           ...convertTimestamps(doc.data())
         })) as Reminder[];
         callback(reminders);
-      }
+      },
+      onError
     );
   }
 };
