@@ -306,21 +306,29 @@ export const notesService = {
   }
 };
 
-// Reminders Service
+// Reminders Service - CORRIGÉ POUR ÉVITER L'ERREUR D'INDEX
 export const remindersService = {
   async getAll(userId?: string): Promise<Reminder[]> {
-    const constraints: QueryConstraint[] = [orderBy('date', 'asc')];
+    const constraints: QueryConstraint[] = [];
     if (userId) {
-      constraints.unshift(where('userId', '==', userId));
+      constraints.push(where('userId', '==', userId));
     }
     
     const querySnapshot = await getDocs(
       query(collection(db, COLLECTIONS.REMINDERS), ...constraints)
     );
-    return querySnapshot.docs.map(doc => ({
+    
+    const reminders = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...convertTimestamps(doc.data())
     })) as Reminder[];
+    
+    // Tri côté client pour éviter l'erreur d'index Firebase
+    return reminders.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateA.getTime() - dateB.getTime(); // Tri croissant
+    });
   },
 
   async add(reminder: Omit<Reminder, 'id'>, userId: string): Promise<string> {
@@ -344,9 +352,9 @@ export const remindersService = {
   },
 
   onSnapshot(callback: (reminders: Reminder[]) => void, userId?: string, onError?: (error: Error) => void) {
-    const constraints: QueryConstraint[] = [orderBy('date', 'asc')];
+    const constraints: QueryConstraint[] = [];
     if (userId) {
-      constraints.unshift(where('userId', '==', userId));
+      constraints.push(where('userId', '==', userId));
     }
     
     return onSnapshot(
@@ -356,7 +364,15 @@ export const remindersService = {
           id: doc.id,
           ...convertTimestamps(doc.data())
         })) as Reminder[];
-        callback(reminders);
+        
+        // Tri côté client pour éviter l'erreur d'index Firebase
+        const sortedReminders = reminders.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          return dateA.getTime() - dateB.getTime(); // Tri croissant
+        });
+        
+        callback(sortedReminders);
       },
       onError
     );
