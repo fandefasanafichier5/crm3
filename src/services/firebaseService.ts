@@ -173,9 +173,9 @@ export const productsService = {
   },
 
   onSnapshot(callback: (products: Product[]) => void, userId?: string, onError?: (error: Error) => void) {
-    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
+    const constraints: QueryConstraint[] = [];
     if (userId) {
-      constraints.unshift(where('userId', '==', userId));
+      constraints.push(where('userId', '==', userId));
     }
     
     return onSnapshot(query(collection(db, COLLECTIONS.PRODUCTS), ...constraints), (snapshot) => {
@@ -183,7 +183,15 @@ export const productsService = {
         id: doc.id,
         ...convertTimestamps(doc.data())
       })) as Product[];
-      callback(products);
+      
+      // Sort client-side to avoid Firebase index requirements
+      const sortedProducts = products.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+        const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+        return dateB.getTime() - dateA.getTime(); // Descending order
+      });
+      
+      callback(sortedProducts);
     }, onError);
   }
 };
@@ -191,18 +199,26 @@ export const productsService = {
 // Orders Service
 export const ordersService = {
   async getAll(userId?: string): Promise<Order[]> {
-    const constraints: QueryConstraint[] = [orderBy('orderDate', 'desc')];
+    const constraints: QueryConstraint[] = [];
     if (userId) {
-      constraints.unshift(where('userId', '==', userId));
+      constraints.push(where('userId', '==', userId));
     }
     
     const querySnapshot = await getDocs(
       query(collection(db, COLLECTIONS.ORDERS), ...constraints)
     );
-    return querySnapshot.docs.map(doc => ({
+    
+    const orders = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...convertTimestamps(doc.data())
     })) as Order[];
+    
+    // Sort client-side to avoid Firebase index requirements
+    return orders.sort((a, b) => {
+      const dateA = new Date(a.orderDate);
+      const dateB = new Date(b.orderDate);
+      return dateB.getTime() - dateA.getTime(); // Descending order
+    });
   },
 
   async add(order: Omit<Order, 'id'>, userId: string): Promise<string> {
@@ -252,18 +268,26 @@ export const ordersService = {
 // Notes Service
 export const notesService = {
   async getAll(userId?: string): Promise<Note[]> {
-    const constraints: QueryConstraint[] = [orderBy('date', 'desc')];
+    const constraints: QueryConstraint[] = [];
     if (userId) {
-      constraints.unshift(where('userId', '==', userId));
+      constraints.push(where('userId', '==', userId));
     }
     
     const querySnapshot = await getDocs(
       query(collection(db, COLLECTIONS.NOTES), ...constraints)
     );
-    return querySnapshot.docs.map(doc => ({
+    
+    const notes = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...convertTimestamps(doc.data())
     })) as Note[];
+    
+    // Sort client-side to avoid Firebase index requirements
+    return notes.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateB.getTime() - dateA.getTime(); // Descending order
+    });
   },
 
   async add(note: Omit<Note, 'id'>, userId: string): Promise<string> {
@@ -287,9 +311,9 @@ export const notesService = {
   },
 
   onSnapshot(callback: (notes: Note[]) => void, userId?: string, onError?: (error: Error) => void) {
-    const constraints: QueryConstraint[] = [orderBy('date', 'desc')];
+    const constraints: QueryConstraint[] = [];
     if (userId) {
-      constraints.unshift(where('userId', '==', userId));
+      constraints.push(where('userId', '==', userId));
     }
     
     return onSnapshot(
@@ -299,7 +323,15 @@ export const notesService = {
           id: doc.id,
           ...convertTimestamps(doc.data())
         })) as Note[];
-        callback(notes);
+        
+        // Sort client-side to avoid Firebase index requirements
+        const sortedNotes = notes.sort((a, b) => {
+          const dateA = new Date(a.date);
+          const dateB = new Date(b.date);
+          return dateB.getTime() - dateA.getTime(); // Descending order
+        });
+        
+        callback(sortedNotes);
       },
       onError
     );
