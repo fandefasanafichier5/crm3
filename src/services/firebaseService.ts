@@ -184,12 +184,8 @@ export const productsService = {
         ...convertTimestamps(doc.data())
       })) as Product[];
       
-      // Sort client-side to avoid Firebase index requirements
-      const sortedProducts = products.sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
-        const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
-        return dateB.getTime() - dateA.getTime(); // Descending order
-      });
+      // Sort by name alphabetically since createdAt may not exist
+      const sortedProducts = products.sort((a, b) => a.name.localeCompare(b.name));
       
       callback(sortedProducts);
     }, onError);
