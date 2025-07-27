@@ -242,9 +242,9 @@ export const ordersService = {
   },
 
   onSnapshot(callback: (orders: Order[]) => void, userId?: string, onError?: (error: Error) => void) {
-    const constraints: QueryConstraint[] = [orderBy('orderDate', 'desc')];
+    const constraints: QueryConstraint[] = [];
     if (userId) {
-      constraints.unshift(where('userId', '==', userId));
+      constraints.push(where('userId', '==', userId));
     }
     
     return onSnapshot(
@@ -254,7 +254,15 @@ export const ordersService = {
           id: doc.id,
           ...convertTimestamps(doc.data())
         })) as Order[];
-        callback(orders);
+        
+        // Sort client-side to avoid Firebase index requirements
+        const sortedOrders = orders.sort((a, b) => {
+          const dateA = new Date(a.orderDate);
+          const dateB = new Date(b.orderDate);
+          return dateB.getTime() - dateA.getTime(); // Descending order
+        });
+        
+        callback(sortedOrders);
       },
       onError
     );
