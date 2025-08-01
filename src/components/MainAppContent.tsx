@@ -93,19 +93,27 @@ const MainAppContent: React.FC = () => {
   React.useEffect(() => {
     const hasShownMigration = localStorage.getItem('firebase-migration-shown');
     
-    // Only show migration modal if Firebase is available and working
-    if (!hasShownMigration && !firebaseLoading && firebaseAvailable && firebaseContacts.length === 0) {
-      setShowMigrationModal(true);
-      localStorage.setItem('firebase-migration-shown', 'true');
-    } else if (firebaseAvailable && firebaseContacts.length > 0) {
+    // Check if we should use Firebase
+    if (firebaseAvailable && !firebaseLoading) {
+      if (firebaseContacts.length > 0 || firebaseProducts.length > 0 || firebaseOrders.length > 0) {
+        // Data exists in Firebase, use it
+        setUseFirebase(true);
+        setMigrationCompleted(true);
+      } else if (!hasShownMigration && localContacts.length > 0) {
+        // Local data exists but no Firebase data, show migration modal
+        setShowMigrationModal(true);
+        localStorage.setItem('firebase-migration-shown', 'true');
+      } else {
+        // No data anywhere, start with Firebase
+        setUseFirebase(true);
+        setMigrationCompleted(true);
+      }
+    } else if (!firebaseAvailable) {
+      // Firebase not available, use local data
       setUseFirebase(true);
       setMigrationCompleted(true);
-    } else if (!firebaseAvailable) {
-      // Firebase is not available, use local data
-      setUseFirebase(false);
-      setMigrationCompleted(false);
     }
-  }, [firebaseLoading, firebaseContacts.length, firebaseAvailable]);
+  }, [firebaseLoading, firebaseContacts.length, firebaseProducts.length, firebaseOrders.length, firebaseAvailable, localContacts.length]);
 
   // Calcul des analytics
   const analytics: Analytics = {
@@ -136,10 +144,10 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleToggleStar = (contactId: string) => {
-    if (useFirebase && migrationCompleted) {
+    if (useFirebase) {
       const contact = contacts.find(c => c.id === contactId);
       if (contact) {
-        updateFirebaseContact(contactId, { starred: !contact.starred });
+        updateFirebaseContact(contactId, { starred: !contact.starred }).catch(console.error);
       }
     } else {
       setLocalContacts(localContacts.map(contact => 
@@ -151,8 +159,8 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleReminderComplete = (reminderId: string) => {
-    if (useFirebase && migrationCompleted) {
-      updateFirebaseReminder(reminderId, { completed: true });
+    if (useFirebase) {
+      updateFirebaseReminder(reminderId, { completed: true }).catch(console.error);
     } else {
       setLocalReminders(localReminders.map(reminder =>
         reminder.id === reminderId
@@ -168,10 +176,10 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleSaveNote = (noteData: Omit<Note, 'id'>) => {
-    if (useFirebase && migrationCompleted) {
-      addFirebaseNote(noteData);
+    if (useFirebase) {
+      addFirebaseNote(noteData).catch(console.error);
       // Update contact's last contact date
-      updateFirebaseContact(noteData.contactId, { lastContact: new Date() });
+      updateFirebaseContact(noteData.contactId, { lastContact: new Date() }).catch(console.error);
     } else {
       const newNote: Note = {
         ...noteData,
@@ -228,8 +236,8 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleUpdateContact = (updatedContact: Contact) => {
-    if (useFirebase && migrationCompleted) {
-      updateFirebaseContact(updatedContact.id, updatedContact);
+    if (useFirebase) {
+      updateFirebaseContact(updatedContact.id, updatedContact).catch(console.error);
     } else {
       setLocalContacts(localContacts.map(contact =>
         contact.id === updatedContact.id ? updatedContact : contact
@@ -238,8 +246,8 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleSaveOrder = (orderData: Omit<Order, 'id'>) => {
-    if (useFirebase && migrationCompleted) {
-      addFirebaseOrder(orderData);
+    if (useFirebase) {
+      addFirebaseOrder(orderData).catch(console.error);
     } else {
       const newOrder: Order = {
         ...orderData,
@@ -251,8 +259,8 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleSaveProduct = (productData: Omit<Product, 'id'>) => {
-    if (useFirebase && migrationCompleted) {
-      addFirebaseProduct(productData);
+    if (useFirebase) {
+      addFirebaseProduct(productData).catch(console.error);
     } else {
       const newProduct: Product = {
         ...productData,
@@ -275,8 +283,8 @@ const MainAppContent: React.FC = () => {
 
   const handleDeleteProduct = (productId: string) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) {
-      if (useFirebase && migrationCompleted) {
-        deleteFirebaseProduct(productId);
+      if (useFirebase) {
+        deleteFirebaseProduct(productId).catch(console.error);
       } else {
         setLocalProducts(localProducts.filter(p => p.id !== productId));
       }
@@ -289,8 +297,8 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleUpdateProduct = (updatedProduct: Product) => {
-    if (useFirebase && migrationCompleted) {
-      updateFirebaseProduct(updatedProduct.id, updatedProduct);
+    if (useFirebase) {
+      updateFirebaseProduct(updatedProduct.id, updatedProduct).catch(console.error);
     } else {
       setLocalProducts(localProducts.map(product =>
         product.id === updatedProduct.id ? updatedProduct : product
@@ -309,8 +317,8 @@ const MainAppContent: React.FC = () => {
   };
 
   const handleVendorInfoSave = (info: any) => {
-    if (useFirebase && migrationCompleted) {
-      saveFirebaseVendorInfo(info);
+    if (useFirebase) {
+      saveFirebaseVendorInfo(info).catch(console.error);
     } else {
       setLocalVendorInfo(info);
     }
@@ -326,12 +334,13 @@ const MainAppContent: React.FC = () => {
   };
 
   // Show loading screen during Firebase initialization
-  if (firebaseLoading && firebaseAvailable) {
+  if (firebaseLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sage-600 mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400">Chargement de l'application...</p>
+          <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Connexion à Firebase...</p>
         </div>
       </div>
     );

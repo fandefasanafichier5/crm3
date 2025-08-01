@@ -82,16 +82,16 @@ export const useFirebaseData = (): UseFirebaseDataReturn => {
 
   // Error handler
   const handleFirebaseError = useCallback((error: any) => {
-    console.error('Firebase error:', error);
+    console.error('💥 Firebase error:', error);
     
     if (error?.code === 'permission-denied') {
       setPermissionError(true);
-      setError('Permission denied. Please check Firebase Security Rules.');
+      setError('Permission refusée. Vérifiez les règles de sécurité Firebase.');
     } else if (error?.code === 'failed-precondition') {
       setIndexError(true);
-      setError('Missing Firebase index. Please create the required indexes.');
+      setError('Index Firebase manquant. Créez les index requis.');
     } else {
-      setError(error?.message || 'An error occurred');
+      setError(error?.message || 'Une erreur est survenue');
     }
     
     setFirebaseAvailable(false);
@@ -100,7 +100,7 @@ export const useFirebaseData = (): UseFirebaseDataReturn => {
 
   // Initialize data
   const initializeData = useCallback(async () => {
-    if (!currentUser || !firebaseAvailable) {
+    if (!currentUser) {
       setInitializing(false);
       return;
     }
@@ -110,6 +110,7 @@ export const useFirebaseData = (): UseFirebaseDataReturn => {
       setError(null);
       setPermissionError(false);
       setIndexError(false);
+      setFirebaseAvailable(true);
 
       // Load all data
       const [contactsData, productsData, ordersData, notesData, remindersData, vendorInfoData] = await Promise.all([
@@ -153,7 +154,7 @@ export const useFirebaseData = (): UseFirebaseDataReturn => {
 
   // Initialize on mount and user change
   useEffect(() => {
-    if (currentUser && firebaseAvailable) {
+    if (currentUser) {
       const cleanup = initializeData();
       return () => {
         if (cleanup instanceof Promise) {
@@ -163,7 +164,7 @@ export const useFirebaseData = (): UseFirebaseDataReturn => {
     } else {
       setInitializing(false);
     }
-  }, [currentUser, initializeData, firebaseAvailable]);
+  }, [currentUser, initializeData]);
 
   // CRUD operations
   const addContact = useCallback(async (contact: Omit<Contact, 'id'>) => {
